@@ -23,6 +23,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	redis "github.com/streamrail/redis-storage"
 	"time"
 )
@@ -48,8 +49,12 @@ func (r *Ratelimit) Start() {
 	r.limiter.Start()
 }
 
-func (r *Ratelimit) Stop() {
+func (r *Ratelimit) Stop() error {
+	if r.limiter == nil {
+		return fmt.Errorf("cannot stop nil rate limiter")
+	}
 	r.limiter.Stop()
+	return nil
 }
 
 func (r *Ratelimit) Incr(key string) (int64, error) {
