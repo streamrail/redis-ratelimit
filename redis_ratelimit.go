@@ -57,6 +57,11 @@ func (r *Ratelimit) Stop() error {
 	return nil
 }
 
+func (r *Ratelimit) Kill(key string) {
+	r.limiter.Delete(key)
+	r.Stop()
+}
+
 func (r *Ratelimit) Incr(key string) (int64, error) {
 	return r.limiter.Post(key, 1, r.limit, r.duration)
 }

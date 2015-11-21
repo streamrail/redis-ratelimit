@@ -27,7 +27,6 @@ import (
 	"encoding/gob"
 	"errors"
 	redis "github.com/streamrail/redis-storage"
-	"log"
 	"math"
 	"strings"
 	"time"
@@ -64,6 +63,11 @@ func (l *SingleThreadLimiter) Start() {
 
 func (l *SingleThreadLimiter) Stop() {
 	l.stopChan <- 1
+}
+
+func (l *SingleThreadLimiter) Kill(key string) {
+	l.Stop()
+	l.Delete(key)
 }
 
 func (l *SingleThreadLimiter) Post(key string, count, limit int64, duration time.Duration) (int64, error) {
@@ -125,7 +129,7 @@ func (l *SingleThreadLimiter) serve() {
 			case GET:
 				bucket, err := l.GetTokenBucket(req.key)
 				if err != nil {
-					log.Println(err)
+					//log.Println("GET/GetTokenBucket error: " + err.Error())
 					req.response <- response{0, err}
 					continue
 				}
@@ -133,11 +137,16 @@ func (l *SingleThreadLimiter) serve() {
 				req.response <- response{usage(bucket.GetAdjustedUsage(now)), nil}
 			case DELETE:
 				err := l.storage.Delete(req.key)
+				if err != nil {
+					//log.Printf("error deleting key %s: %s\n", req.key, err.Error())
+				} else {
+					//log.Printf("key %s deleted\n", req.key)
+				}
 				req.response <- response{0, err}
 			case POST:
 				bucket, err := l.GetTokenBucket(req.key)
-				if err != nil {
-					log.Println(err)
+				if err != nil && err != redis.ErrNil {
+					//log.Println("POST/GetTokenBucket error: " + err.Error())
 					req.response <- response{0, err}
 					continue
 				}
@@ -154,13 +163,14 @@ func (l *SingleThreadLimiter) serve() {
 
 				err = bucket.Consume(count)
 				if err != nil {
-					log.Println(err)
+					//log.Println("bucket.Consume error: " + err.Error())
 					req.response <- response{usage(bucket.Used), err}
 					continue
 				}
+				//log.Printf("Setex token bucket: key=%s\n", req.key)
 				err = l.storage.Setex(req.key, bucket, duration)
 				if err != nil {
-					log.Println(err)
+					//log.Println(err)
 					req.response <- response{0, err}
 					continue
 				}
@@ -214,6 +224,7 @@ func usage(f float64) int64 {
 }
 
 func (l *SingleThreadLimiter) GetTokenBucket(key string) (*TokenBucket, error) {
+	//log.Printf("GetTokenBucket: key = %s\n", key)
 	data, err := l.storage.Get(key)
 	if err != nil {
 		return nil, err
@@ -227,7 +238,7 @@ func (l *SingleThreadLimiter) GetTokenBucket(key string) (*TokenBucket, error) {
 	err = dec.Decode(result)
 
 	if err != nil {
-		log.Println(err.Error())
+		//log.Println(err.Error())
 		return nil, err
 	}
 	return result, nil
